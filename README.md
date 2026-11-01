@@ -1,5 +1,20 @@
 # MuObserve-collector
 
+<p align="center">
+  <a href="https://hook.lma1980.duckdns.org/jobs">
+    <img src="https://hook.lma1980.duckdns.org/cards/LMA1980/MuObserve-collector/card.svg" alt="MuObserve-collector Factory Scorecard" width="520"/>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://hook.lma1980.duckdns.org/jobs"><img src="https://hook.lma1980.duckdns.org/badges/LMA1980/MuObserve-collector/status.svg" alt="CI Status"/></a>
+  <a href="https://hook.lma1980.duckdns.org/jobs"><img src="https://hook.lma1980.duckdns.org/badges/LMA1980/MuObserve-collector/score.svg" alt="Quality Score"/></a>
+  <a href="https://hook.lma1980.duckdns.org/jobs"><img src="https://hook.lma1980.duckdns.org/badges/LMA1980/MuObserve-collector/coverage.svg" alt="Coverage"/></a>
+  <a href="https://hook.lma1980.duckdns.org/jobs"><img src="https://hook.lma1980.duckdns.org/badges/LMA1980/MuObserve-collector/benchmark.svg" alt="Benchmark"/></a>
+</p>
+
+---
+
 Sandboxed node-level edge telemetry collector for the **MuObserve** distributed observability platform.
 
 ## Architectural Scope
