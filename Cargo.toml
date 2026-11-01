@@ -7,5 +7,25 @@ license = "AGPL-3.0-only"
 repository = "https://github.com/LMA1980/MuObserve-collector"
 
 [dependencies]
+muobserve-ipc = { git = "https://github.com/LMA1980/MuObserve-ipc.git", branch = "main" }
+mu-isolation = { git = "https://github.com/LMA1980/MuIsolation.git", branch = "main" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "fs", "io-util", "net", "signal"] }
+axum = { version = "0.8" }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
+rustls-pki-types = "1"
+fory = "1.7"
+arrow = { version = "54", default-features = false, features = ["ipc"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+bytes = "1"
+http = "1"
+
+[dev-dependencies]
+tempfile = "3"
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem", "crypto"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
