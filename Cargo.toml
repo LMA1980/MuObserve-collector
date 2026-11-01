@@ -1,0 +1,11 @@
+[package]
+name = "muobserve-collector"
+version = "0.1.0"
+edition = "2021"
+description = "Sandboxed node-level edge telemetry collector with OTLP/Arrow ingestion, streaming secret redaction, bounded DuckDB/Arrow ring-buffer WAL, and step-ca mTLS upstream streaming"
+license = "AGPL-3.0-only"
+repository = "https://github.com/LMA1980/MuObserve-collector"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
