@@ -32,7 +32,8 @@ pub use forwarder::{
 pub use ingest::serve_muob_unix_once;
 pub use ingest::{
     build_otlp_router, handle_muob_connection, parse_otlp_logs_json, parse_otlp_metrics_json,
-    parse_otlp_traces_json, serve_muob_tcp_once, CollectorIngestState, OtlpIngestResponse,
+    parse_otlp_traces_json, serve_muob_tcp_listener, serve_muob_tcp_once, CollectorIngestState,
+    IngestConfig, OtlpIngestResponse, DEFAULT_MUOB_TCP_ADDR, DEFAULT_OTLP_HTTP_ADDR,
 };
 pub use scrubber::{is_high_priority_log, EdgeSecretScrubber, ScrubbedArrowBatch};
 pub use wal::{

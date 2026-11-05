@@ -24,6 +24,50 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
+/// Default loopback OTLP HTTP address (`127.0.0.1:4318`).
+pub const DEFAULT_OTLP_HTTP_ADDR: &str = "127.0.0.1:4318";
+
+/// Default loopback native Arrow IPC TCP address (`127.0.0.1:4319`).
+pub const DEFAULT_MUOB_TCP_ADDR: &str = "127.0.0.1:4319";
+
+/// Configuration for the node-local OTLP HTTP and native `MUOB` Arrow IPC ingestion listeners.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IngestConfig {
+    pub otlp_http_addr: String,
+    pub muob_tcp_addr: String,
+}
+
+impl Default for IngestConfig {
+    fn default() -> Self {
+        Self {
+            otlp_http_addr: DEFAULT_OTLP_HTTP_ADDR.to_string(),
+            muob_tcp_addr: DEFAULT_MUOB_TCP_ADDR.to_string(),
+        }
+    }
+}
+
+impl IngestConfig {
+    /// Resolves [`IngestConfig`] from `MUOBSERVE_OTLP_HTTP_ADDR` and `MUOBSERVE_MUOB_TCP_ADDR`,
+    /// falling back to defaults [`DEFAULT_OTLP_HTTP_ADDR`] and [`DEFAULT_MUOB_TCP_ADDR`].
+    #[must_use]
+    pub fn from_env() -> Self {
+        let otlp_http_addr = std::env::var("MUOBSERVE_OTLP_HTTP_ADDR")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| DEFAULT_OTLP_HTTP_ADDR.to_string());
+        let muob_tcp_addr = std::env::var("MUOBSERVE_MUOB_TCP_ADDR")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| DEFAULT_MUOB_TCP_ADDR.to_string());
+        Self {
+            otlp_http_addr,
+            muob_tcp_addr,
+        }
+    }
+}
+
 /// Shared state for the node-local `MuObserve-collector` ingestion endpoints.
 #[derive(Clone)]
 pub struct CollectorIngestState {
@@ -683,7 +727,12 @@ where
         let (header, payload) = match read_frame(&mut stream).await {
             Ok(pair) => pair,
             Err(muobserve_ipc::IpcError::Io(ref e))
-                if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::UnexpectedEof
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::BrokenPipe
+                ) =>
             {
                 return Ok(processed_frames);
             }
@@ -733,6 +782,38 @@ pub async fn serve_muob_tcp_once(
 ) -> Result<u64, CollectorError> {
     let (stream, _peer) = listener.accept().await?;
     handle_muob_connection(stream, state).await
+}
+
+/// Accepts and processes connections from a loopback TCP listener speaking the `MUOB` Arrow IPC protocol in an accept loop.
+///
+/// Spawns a Tokio task for each accepted connection running [`handle_muob_connection`], ensuring
+/// concurrent streams from local worker daemons (such as `ActionRunner-rs` `TelemetryEmitter`) are ingested
+/// without blocking the accept loop.
+pub async fn serve_muob_tcp_listener(
+    listener: TcpListener,
+    state: CollectorIngestState,
+) -> Result<(), CollectorError> {
+    loop {
+        match listener.accept().await {
+            Ok((stream, peer_addr)) => {
+                let state_clone = state.clone();
+                tokio::spawn(async move {
+                    tracing::debug!(%peer_addr, "Accepted MUOB Arrow IPC connection");
+                    if let Err(e) = handle_muob_connection(stream, state_clone).await {
+                        tracing::debug!(
+                            %peer_addr,
+                            error = %e,
+                            "MUOB Arrow IPC stream finished or client disconnected"
+                        );
+                    }
+                });
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to accept MUOB Arrow IPC TCP connection; retrying");
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        }
+    }
 }
 
 /// Binds a Unix domain socket listener at `socket_path` and handles a single `MUOB` Arrow IPC connection.
