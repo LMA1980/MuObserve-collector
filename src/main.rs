@@ -1,7 +1,8 @@
 use muobserve_collector::{
-    apply_collector_startup_sandbox, build_otlp_router, CollectorIngestState,
-    CollectorSandboxConfig, EdgeRingWal, EdgeSecretScrubber, MtlsForwarder, MtlsForwarderConfig,
-    DEFAULT_MAX_AGE_SECS, DEFAULT_MAX_WAL_BYTES, DEFAULT_WAL_MAX_MB,
+    apply_collector_startup_sandbox, build_otlp_router, serve_muob_tcp_listener,
+    CollectorIngestState, CollectorSandboxConfig, EdgeRingWal, EdgeSecretScrubber, IngestConfig,
+    MtlsForwarder, MtlsForwarderConfig, DEFAULT_MAX_AGE_SECS, DEFAULT_MAX_WAL_BYTES,
+    DEFAULT_WAL_MAX_MB,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -38,10 +39,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env!("CARGO_PKG_VERSION")
     );
 
-    if std::env::var("MUOBSERVE_COLLECTOR_SERVE")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-    {
+    let serve_mode = std::env::args().any(|a| a == "serve" || a == "--serve")
+        || std::env::var("MUOBSERVE_COLLECTOR_SERVE")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+    if serve_mode {
         let wal = if let Ok(path) = std::env::var("MUOBSERVE_WAL_PATH") {
             EdgeRingWal::open(path, DEFAULT_MAX_WAL_BYTES, DEFAULT_MAX_AGE_SECS)?
         } else {
@@ -92,11 +95,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "MUOBSERVE_SECRET_TOKEN",
         ]);
         let state = CollectorIngestState::new(wal, Arc::new(scrubber), node_id, arch);
-        let listen_addr = std::env::var("MUOBSERVE_OTLP_HTTP_ADDR")
-            .unwrap_or_else(|_| "127.0.0.1:4318".to_string());
-        let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
-        tracing::info!(%listen_addr, "Listening for OTLP/HTTP telemetry");
-        axum::serve(listener, build_otlp_router(state)).await?;
+        let ingest_cfg = IngestConfig::from_env();
+
+        let http_listener = tokio::net::TcpListener::bind(&ingest_cfg.otlp_http_addr).await?;
+        let muob_listener = tokio::net::TcpListener::bind(&ingest_cfg.muob_tcp_addr).await?;
+
+        tracing::info!(
+            otlp_http_addr = %ingest_cfg.otlp_http_addr,
+            "Listening for OTLP/HTTP telemetry"
+        );
+        tracing::info!(
+            muob_tcp_addr = %ingest_cfg.muob_tcp_addr,
+            "Listening for native MUOB Arrow IPC telemetry"
+        );
+
+        let http_server = axum::serve(http_listener, build_otlp_router(state.clone()));
+        let muob_server = serve_muob_tcp_listener(muob_listener, state);
+
+        tokio::select! {
+            res = http_server => {
+                if let Err(e) = res {
+                    tracing::error!(error = %e, "OTLP/HTTP server terminated with error");
+                }
+            }
+            res = muob_server => {
+                if let Err(e) = res {
+                    tracing::error!(error = %e, "MUOB Arrow IPC TCP server terminated with error");
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("Received shutdown signal; stopping MuObserve-collector");
+            }
+        }
     }
 
     Ok(())
