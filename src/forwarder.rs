@@ -485,6 +485,7 @@ mod tests {
         assert_eq!(bin_rule.access_mask, EXEC_ACCESS);
     }
 
+    #[cfg(not(miri))]
     #[tokio::test]
     async fn test_mtls_forwarder_drains_wal_and_truncates_on_ack_with_backoff() {
         let dir = tempdir().expect("tempdir");
